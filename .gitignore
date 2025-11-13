@@ -1,61 +1,69 @@
-# ------------------------
-# Node / Frontend
-# ------------------------
+# ============================
+# FRONTEND (React / Node)
+# ============================
+
+# Ignore ALL node_modules everywhere
 node_modules/
-dist/
+
+# Ignore all build outputs
 build/
+dist/
 .next/
 out/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 .vite/
 
-# Environment files
-.env
-.env.local
-.env.*.local
+# React environment files
+**/.env
+**/.env.local
+**/.env.*.local
 
 # Logs
-logs
-*.log
-*.log.*
-debug.log
-error.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
-# ------------------------
-# Python / ML Model
-# ------------------------
+# ============================
+# PYTHON / ML PROJECT
+# ============================
+
+# Bytecode caches
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 
-# Virtual environment
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environments
 venv/
 .venv/
 
-# Model weights & datasets
+# ML model files (large)
 *.h5
 *.hdf5
+*.keras
+*.tflite
+*.pb
+*.bin
 *.pt
 *.pth
 *.onnx
-*.pb
-*.tflite
+
+# TensorFlow saved model folder
+saved_model/
+
+# Dataset files
 *.csv
 *.npz
 *.npy
 
-# Jupyter
-.ipynb_checkpoints/
+# ============================
+# EDITOR / OS FILES
+# ============================
 
-# ------------------------
-# OS / Editor
-# ------------------------
+.vscode/
 .DS_Store
 Thumbs.db
-
-# VS Code settings
-.vscode/
+*.swp
+*.swo
