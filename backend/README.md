@@ -21,7 +21,7 @@ Express.js REST API with MongoDB for user authentication and progress tracking.
 Add these in Render Dashboard under "Environment":
 
 ```bash
-MONGODB_URI=mongodb+srv://rk5849193_db_user:wXre5A3XYpnjnBUu@cluster0.c20ku2r.mongodb.net/
+MONGODB_URI=your_mongodb_atlas_connection_string
 JWT_SECRET=change-this-to-a-random-string-minimum-32-characters
 JWT_EXPIRE=7d
 FRONTEND_URL=https://your-frontend-url.vercel.app
@@ -166,10 +166,10 @@ npm test        # Run tests (not configured yet)
 
 ### MongoDB Atlas (Recommended for Production)
 
-Already configured! The connection string is:
-```
-mongodb+srv://rk5849193_db_user:wXre5A3XYpnjnBUu@cluster0.c20ku2r.mongodb.net/
-```
+1. Create a free cluster at [MongoDB Atlas](https://cloud.mongodb.com/)
+2. Create a database user with a secure password
+3. Get your connection string from "Connect" → "Connect your application"
+4. Replace the `MONGODB_URI` in your `.env` file
 
 **Important for Render deployment:**
 - Go to MongoDB Atlas → Network Access
