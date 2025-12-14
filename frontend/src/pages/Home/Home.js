@@ -1,4 +1,4 @@
-import React from "react";
+// React import not needed for functional components
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 

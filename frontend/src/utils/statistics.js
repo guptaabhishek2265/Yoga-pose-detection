@@ -305,4 +305,5 @@ class Statistics {
   }
 }
 
-export default new Statistics()
+const statisticsInstance = new Statistics()
+export default statisticsInstance

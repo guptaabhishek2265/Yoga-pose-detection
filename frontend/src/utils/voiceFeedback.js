@@ -111,7 +111,7 @@ class VoiceFeedback {
   }
 
   // Pose correction suggestions
-  getPoseCorrectionMessage(pose, confidence) {
+  getPoseCorrectionMessage(pose) {
     const corrections = {
       'Tree': [
         'Press your foot firmly against your leg.',
@@ -180,4 +180,5 @@ class VoiceFeedback {
   }
 }
 
-export default new VoiceFeedback()
+const voiceFeedbackInstance = new VoiceFeedback()
+export default voiceFeedbackInstance

@@ -1,12 +1,13 @@
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs';
-import React, { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import Webcam from 'react-webcam'
 import { count } from '../../utils/music';
 import { detectPoseOnServer, checkServerHealth, imageDataToBase64 } from '../../services/serverPoseService';
 import voiceFeedback from '../../utils/voiceFeedback';
 import statistics from '../../utils/statistics';
 import Achievements from '../../components/Achievements/Achievements';
+import { useAuth } from '../../contexts/AuthContext';
 
 import Instructions from '../../components/Instrctions/Instructions';
 
@@ -26,11 +27,20 @@ const poseList = [
 
 
 function Yoga() {
+  const { user, addSession, addAchievement, getStats } = useAuth()
   const webcamRef = useRef(null)
   const canvasRef = useRef(null)
   const intervalRef = useRef(null)
   const flagRef = useRef(false)
   const skeletonColorRef = useRef('rgb(255,255,255)')
+  const sessionStartRef = useRef(null)
+  const sessionDataRef = useRef({
+    bestHold: 0,
+    perfectHolds: 0,
+    totalAccuracy: 0,
+    accuracyReadings: 0,
+    attempts: 1
+  })
 
   const [startingTime, setStartingTime] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
@@ -45,9 +55,9 @@ function Yoga() {
   const [facingMode, setFacingMode] = useState('user') // 'user' or 'environment'
   const [errorMessage, setErrorMessage] = useState('')
   const [showAchievements, setShowAchievements] = useState(false)
-  const [newAchievements, setNewAchievements] = useState([])
-  const [userStats, setUserStats] = useState(statistics.getStats())
-  const [settings, setSettings] = useState(() => {
+  const [, setNewAchievements] = useState([])
+  const [userStats, setUserStats] = useState({})
+  const [settings] = useState(() => {
     const saved = localStorage.getItem('yogaSettings')
     return saved ? JSON.parse(saved) : {
       difficulty: 'intermediate',
@@ -248,29 +258,40 @@ function Yoga() {
 
           // Color-coded skeleton based on confidence
           const threshold = settings.confidenceThreshold || 95
-          
+
+          // Track accuracy for every frame
+          sessionDataRef.current.totalAccuracy += poseConfidence
+          sessionDataRef.current.accuracyReadings += 1
+
           if (poseConfidence >= threshold) {
             skeletonColorRef.current = 'rgb(0,255,0)' // Green - Perfect!
             if (!flagRef.current) {
               countAudio.play()
               setStartingTime(new Date(Date()).getTime())
               flagRef.current = true
-              
+
               // Voice feedback for perfect pose
               if (settings.voiceFeedback && Math.random() < 0.3) { // 30% chance
                 voiceFeedback.speak(voiceFeedback.getConfidenceMessage(poseConfidence))
               }
             }
             setCurrentTime(new Date(Date()).getTime())
-            
-            // Update statistics
+
+            // Update session statistics in real-time
             const holdTime = (new Date(Date()).getTime() - startingTime) / 1000
+            sessionDataRef.current.bestHold = Math.max(sessionDataRef.current.bestHold, holdTime)
+
+            // Count perfect holds (when accuracy is very high)
+            if (poseConfidence >= 97 && holdTime >= 1) { // Must hold for at least 1 second
+              sessionDataRef.current.perfectHolds += 0.1 // Increment gradually
+            }
+
             statistics.updateSession(holdTime, poseConfidence)
-            
+
           } else if (poseConfidence >= 80) {
             skeletonColorRef.current = 'rgb(255,165,0)' // Orange - Almost there
             if (flagRef.current && settings.voiceFeedback && Math.random() < 0.1) { // 10% chance
-              voiceFeedback.speak(voiceFeedback.getPoseCorrectionMessage(currentPose, poseConfidence))
+              voiceFeedback.speak(voiceFeedback.getPoseCorrectionMessage(currentPose))
             }
             flagRef.current = false
             countAudio.pause()
@@ -298,15 +319,23 @@ function Yoga() {
   function startYoga() {
     setIsStartPose(true)
     setErrorMessage('') // Clear any previous errors
-    
+
     // Start session tracking
+    sessionStartRef.current = new Date()
+    sessionDataRef.current = {
+      bestHold: 0,
+      perfectHolds: 0,
+      totalAccuracy: 0,
+      accuracyReadings: 0,
+      attempts: 1
+    }
     statistics.startSession(currentPose)
-    
+
     // Voice feedback for pose start
     if (settings.voiceFeedback) {
       voiceFeedback.speak(voiceFeedback.getPoseStartMessage(currentPose))
     }
-    
+
     if (useServer) {
       // Check server availability first
       checkServerHealth().then(available => {
@@ -331,49 +360,113 @@ function Yoga() {
     }
   }
 
-  function stopPose() {
+  async function stopPose() {
     setIsStartPose(false)
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
     }
-    
+
     // End session and get results
     const sessionResults = statistics.endSession()
-    if (sessionResults) {
-      // Voice feedback for session complete
-      if (settings.voiceFeedback) {
-        voiceFeedback.speak(voiceFeedback.getSessionCompleteMessage(
-          Math.round(sessionResults.duration), 
-          Math.round(sessionResults.averageAccuracy)
-        ))
+    if (sessionStartRef.current && user) {
+      // Calculate average accuracy from tracked data
+      const averageAccuracy = sessionDataRef.current.accuracyReadings > 0
+        ? sessionDataRef.current.totalAccuracy / sessionDataRef.current.accuracyReadings
+        : 0
+
+      const sessionData = {
+        pose: currentPose,
+        startTime: sessionStartRef.current.toISOString(),
+        endTime: new Date().toISOString(),
+        bestHold: Math.max(sessionDataRef.current.bestHold, sessionResults?.bestHold || 0),
+        averageAccuracy: Math.max(averageAccuracy, sessionResults?.averageAccuracy || 0),
+        perfectHolds: Math.round(Math.max(sessionDataRef.current.perfectHolds, sessionResults?.perfectHolds || 0)),
+        attempts: 1,
+        detectionMode: useServer ? 'server' : 'local'
       }
-      
-      // Check for new achievements
-      const achievements = statistics.checkAchievements()
-      if (achievements.length > 0) {
-        setNewAchievements(achievements)
-        setShowAchievements(true)
-        
-        // Voice feedback for achievements
+
+      // Save session to backend
+      try {
+        await addSession(sessionData)
+
+        // Voice feedback for session complete
         if (settings.voiceFeedback) {
-          achievements.forEach(achievement => {
-            setTimeout(() => {
-              voiceFeedback.speak(voiceFeedback.getAchievementMessage(achievement))
-            }, 2000)
-          })
+          voiceFeedback.speak(voiceFeedback.getSessionCompleteMessage(
+            Math.round(sessionResults.duration),
+            Math.round(sessionResults.averageAccuracy)
+          ))
         }
+
+        // Check for new achievements
+        const achievements = statistics.checkAchievements()
+        if (achievements.length > 0) {
+          // Save achievements to backend
+          for (const achievementId of achievements) {
+            await addAchievement({
+              achievementId,
+              title: getAchievementTitle(achievementId),
+              description: getAchievementDescription(achievementId)
+            })
+          }
+
+          setNewAchievements(achievements)
+          setShowAchievements(true)
+
+          // Voice feedback for achievements
+          if (settings.voiceFeedback) {
+            achievements.forEach(achievement => {
+              setTimeout(() => {
+                voiceFeedback.speak(voiceFeedback.getAchievementMessage(achievement))
+              }, 2000)
+            })
+          }
+        }
+
+        // Update stats display
+        const updatedStats = await getStats()
+        if (updatedStats) {
+          setUserStats(updatedStats)
+        }
+      } catch (error) {
+        console.error('Error saving session:', error)
+        // Fallback to local storage if backend fails
+        setUserStats(statistics.getStats())
       }
-      
-      // Update stats display
-      setUserStats(statistics.getStats())
     }
-    
+
     setConfidence(0)
     setIsLoading(false)
     flagRef.current = false
     skeletonColorRef.current = 'rgb(255,255,255)'
     setDetectionStatus('Waiting...')
+  }
+
+  // Helper functions for achievements
+  function getAchievementTitle(achievementId) {
+    const titles = {
+      'first_perfect': 'First Perfect Pose',
+      'pose_master': 'Pose Master',
+      'streak_7': '7-Day Warrior',
+      'time_master': 'Time Master',
+      'dedicated': 'Dedicated Practitioner',
+      'consistency_king': 'Consistency King',
+      'accuracy_expert': 'Accuracy Expert'
+    }
+    return titles[achievementId] || 'Achievement Unlocked'
+  }
+
+  function getAchievementDescription(achievementId) {
+    const descriptions = {
+      'first_perfect': 'Achieve 97% accuracy on any pose',
+      'pose_master': 'Perfect all 7 yoga poses',
+      'streak_7': 'Practice yoga for 7 consecutive days',
+      'time_master': 'Hold a pose for 30+ seconds',
+      'dedicated': 'Complete 100 practice sessions',
+      'consistency_king': '30-day practice streak',
+      'accuracy_expert': 'Maintain 95% average accuracy'
+    }
+    return descriptions[achievementId] || 'You achieved something great!'
   }
 
   function toggleCamera() {
@@ -497,14 +590,30 @@ function Yoga() {
             setConfidence(Math.round(poseConfidence));
             console.log('Pose confidence:', poseConfidence.toFixed(1) + '%');
 
+            // Track accuracy for every frame (server mode)
+            sessionDataRef.current.totalAccuracy += poseConfidence
+            sessionDataRef.current.accuracyReadings += 1
+
             // Color-coded skeleton based on confidence
-            if (poseConfidence >= 97) {
+            const threshold = settings.confidenceThreshold || 95
+
+            if (poseConfidence >= threshold) {
               if (!flagRef.current) {
                 countAudio.play();
                 setStartingTime(new Date(Date()).getTime());
                 flagRef.current = true;
               }
               setCurrentTime(new Date(Date()).getTime());
+
+              // Update session statistics in real-time (server mode)
+              const holdTime = (new Date(Date()).getTime() - startingTime) / 1000
+              sessionDataRef.current.bestHold = Math.max(sessionDataRef.current.bestHold, holdTime)
+
+              // Count perfect holds (when accuracy is very high)
+              if (poseConfidence >= 97 && holdTime >= 1) { // Must hold for at least 1 second
+                sessionDataRef.current.perfectHolds += 0.1 // Increment gradually
+              }
+
               skeletonColorRef.current = 'rgb(0,255,0)'; // Green - Perfect!
             } else if (poseConfidence >= 80) {
               flagRef.current = false;
@@ -535,14 +644,14 @@ function Yoga() {
   if (isStartPose) {
     return (
       <div className="yoga-container">
-        
+
         {/* Achievements Popup */}
         {showAchievements && (
           <div className="achievements-popup">
             <div className="achievements-popup-content">
               <h2>🎉 New Achievements!</h2>
               <Achievements userStats={userStats} />
-              <button 
+              <button
                 onClick={() => setShowAchievements(false)}
                 className="close-achievements-btn"
               >
@@ -553,10 +662,16 @@ function Yoga() {
         )}
         <div className="performance-container">
           <div className="pose-performance">
-            <h4 style={{ fontSize: '24px', margin: '5px 0' }}>⏱️ {poseTime.toFixed(1)}s</h4>
+            <h4 style={{ fontSize: '20px', margin: '5px 0' }}>⏱️ {poseTime.toFixed(1)}s</h4>
           </div>
           <div className="pose-performance">
-            <h4 style={{ fontSize: '18px', margin: '5px 0' }}>🏆 Best: {bestPerform.toFixed(1)}s</h4>
+            <h4 style={{ fontSize: '16px', margin: '5px 0' }}>🏆 Best: {Math.max(bestPerform, sessionDataRef.current.bestHold).toFixed(1)}s</h4>
+          </div>
+          <div className="pose-performance">
+            <h4 style={{ fontSize: '16px', margin: '5px 0' }}>✨ Perfect: {Math.round(sessionDataRef.current.perfectHolds)}</h4>
+          </div>
+          <div className="pose-performance">
+            <h4 style={{ fontSize: '16px', margin: '5px 0' }}>📊 Avg: {sessionDataRef.current.accuracyReadings > 0 ? Math.round(sessionDataRef.current.totalAccuracy / sessionDataRef.current.accuracyReadings) : 0}%</h4>
           </div>
         </div>
 
@@ -609,10 +724,10 @@ function Yoga() {
           </div>
         )}
 
-        {/* Processing indicator - always visible (non-interactive) */}
+        {/* Processing indicator - show loading state */}
         <div style={{ textAlign: 'center', color: 'white', fontSize: '14px', margin: '5px 0', pointerEvents: 'none' }}>
           <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block', marginRight: 8 }}>⏳</span>
-          Processing...
+          {isLoading ? 'Server Processing...' : 'AI Processing...'}
         </div>
 
         <div style={{ textAlign: 'center', color: 'white', margin: '10px 0', fontSize: '16px', fontWeight: 'bold' }}>

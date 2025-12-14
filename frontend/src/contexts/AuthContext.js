@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const AuthContext = createContext();
 
@@ -19,7 +19,7 @@ export const AuthProvider = ({ children }) => {
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
   // API call helper
-  const apiCall = async (endpoint, options = {}) => {
+  const apiCall = useCallback(async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
     const config = {
       headers: {
@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     return data;
-  };
+  }, [token, API_BASE_URL]);
 
   // Verify token on app load
   useEffect(() => {
@@ -70,7 +70,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     verifyToken();
-  }, [token]);
+  }, [token, apiCall]);
 
   // Login function
   const login = async (loginData) => {
@@ -93,8 +93,11 @@ export const AuthProvider = ({ children }) => {
         return { success: true, message: response.message };
       }
     } catch (error) {
-      setError(error.message);
-      return { success: false, message: error.message };
+      const errorMessage = error.message.includes('fetch') || error.message.includes('NetworkError')
+        ? 'Cannot connect to server. Please make sure the backend is running on port 5000.'
+        : error.message;
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
-import React from 'react';
+// React import not needed for functional components
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import './ProtectedRoute.css';
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();

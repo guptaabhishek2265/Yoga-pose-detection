@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+// React hooks not needed for this component currently
 import { Link } from 'react-router-dom'
 import './Flows.css'
 
@@ -30,7 +30,7 @@ const yogaFlows = {
 }
 
 export default function Flows() {
-    const [selectedFlow, setSelectedFlow] = useState(null)
+    // Future feature: const [selectedFlow, setSelectedFlow] = useState(null)
 
     return (
         <div className="flows-container">
