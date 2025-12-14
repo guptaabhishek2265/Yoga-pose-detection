@@ -101,7 +101,7 @@ export default function Progress() {
         </div>
         
         <div className="stat-card">
-          <h3>{Math.round(userStats.longestHold || 0)}s</h3>
+          <h3>{(userStats.longestHold && userStats.longestHold > 0 && userStats.longestHold < 3600) ? Math.round(userStats.longestHold) : 0}s</h3>
           <p>Longest Hold</p>
         </div>
         
@@ -121,7 +121,7 @@ export default function Progress() {
                 <h4>{pose}</h4>
                 <div className="pose-details">
                   <span>Attempts: {stats.attempts || 0}</span>
-                  <span>Best Hold: {(stats.bestHold || 0).toFixed(1)}s</span>
+                  <span>Best Hold: {(stats.bestHold && stats.bestHold < 3600) ? stats.bestHold.toFixed(1) : 0}s</span>
                   <span>Perfect: {stats.perfectHolds || 0}</span>
                   <span>Accuracy: {Math.round(stats.averageAccuracy || 0)}%</span>
                 </div>
@@ -136,7 +136,7 @@ export default function Progress() {
         <h2>Personal Bests</h2>
         {userStats.poseStats && Object.keys(userStats.poseStats).length > 0 ? (
           Object.entries(userStats.poseStats)
-            .filter(([, stats]) => stats.bestHold > 0)
+            .filter(([, stats]) => stats.bestHold > 0 && stats.bestHold < 3600)
             .sort(([, a], [, b]) => b.bestHold - a.bestHold)
             .map(([pose, stats]) => (
               <div key={pose} className="score-item">
